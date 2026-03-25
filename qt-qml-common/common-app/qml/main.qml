@@ -8,6 +8,7 @@ ApplicationWindow {
     height: 480
     visible: true
     title: qsTr("App Common")
+    color: "#CEE8ED"
 
     minimumWidth: 640
     maximumWidth: 640
@@ -21,9 +22,12 @@ ApplicationWindow {
     MyButton{
         anchors.centerIn: parent
         text: "click me"
-        bgColor: "red"
+        bgColor: "#EBC167"
         onClicked: {
             appController.changeCount(appController.count + 1)
+            if (appController.count % 3 == 0) {
+                dialog.visible = true
+            }
         }
     }
 
@@ -37,5 +41,42 @@ ApplicationWindow {
     Text {
         id: labelName
         text: appController.appName
+    }
+
+//    MyComboBoxStyleColor {
+//        x: 100
+//        y: 10
+//        width: 400
+//        model: ["Apple", "Banana", "Orange","Gohan","Goku","Vegeta"]
+
+//        onActivated: (i, text) => {
+//            console.log("Selected:", text, i)
+//        }
+//    }
+
+//    MyTextField{
+//        x: 100
+//        y: 10
+//        width: 400
+//        height: 40
+//        placeholderText: "Barcode Enter"
+//        color: "#222"
+//        font.pixelSize: 18
+//    }
+
+    MyDialog {
+        id: dialog
+        anchors.centerIn: parent
+
+        title: "Confirm"
+        message: "Are you sure you want to continue?"
+
+        onAccepted: {
+            console.log("OK")
+        }
+
+        onRejected: {
+            console.log("Cancel")
+        }
     }
 }

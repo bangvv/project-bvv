@@ -7,7 +7,9 @@ Button {
 
     background: Rectangle {
         color: root.bgColor
-        radius: 8
+        radius: 6
+        border.color: "#A1821B"
+        border.width: 2
     }
 
     contentItem: Text {

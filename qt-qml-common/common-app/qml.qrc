@@ -1,6 +1,11 @@
 <RCC>
     <qresource prefix="/">
         <file>qml/main.qml</file>
-		<file>qml/common/MyButton.qml</file>
+        <file>qml/common/MyButton.qml</file>
+        <file>qml/common/MyComboBox.qml</file>
+        <file>qml/common/MyTextField.qml</file>
+        <file>qml/common/MyPasswordField.qml</file>
+        <file>qml/common/MyComboBoxStyleColor.qml</file>
+        <file>qml/common/MyDialog.qml</file>
     </qresource>
 </RCC>
