@@ -70,13 +70,15 @@ ApplicationWindow {
 
         title: "Confirm"
         message: "Are you sure you want to continue?"
+        accept: "OKe"
+        reject: "Cancel"
 
         onAccepted: {
-            console.log("OK")
+            console.log(accept)
         }
 
         onRejected: {
-            console.log("Cancel")
+            console.log(reject)
         }
     }
 }

@@ -6,6 +6,8 @@ Popup {
 
     property string title: "Dialog"
     property string message: ""
+    property string accept: "OK"
+    property string reject: "Cancel"
 
     signal accepted()
     signal rejected()
@@ -50,7 +52,7 @@ Popup {
             anchors.horizontalCenter: parent.horizontalCenter
 
             Button {
-                text: "Cancel"
+                text: root.reject
                 width: 100
                 height: 40
                 background: Rectangle {
@@ -65,7 +67,7 @@ Popup {
             }
 
             Button {
-                text: "OK"
+                text: root.accept
                 width: 100
                 height: 40
                 background: Rectangle {
