@@ -17,15 +17,12 @@ int AppController::getCount() const { return m_count; }
 //                      Setter
 //-------------------------------------------------
 void AppController::setAppName(const QString &name) {
-    if (m_appName == name)
-        return;
-
+    if (m_appName == name) return;
     m_appName = name;
     emit appNameChanged();
 }
 
-void AppController::setCount(const int &count)
-{
+void AppController::setCount(const int &count) {
     if (m_count == count) return;
     m_count = count;
     emit countChanged();
