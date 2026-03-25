@@ -70,7 +70,7 @@ ApplicationWindow {
 
         title: "Confirm"
         message: "Are you sure you want to continue?"
-        accept: "OKe"
+        accept: "OK"
         reject: "Cancel"
 
         onAccepted: {
