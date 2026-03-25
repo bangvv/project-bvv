@@ -40,6 +40,7 @@ Popup {
             text: "Cài đặt - thông tin lưu log file"
             font.pixelSize: 16
             font.bold: true
+            anchors.horizontalCenter: parent.horizontalCenter
         }
 
         // ===== TEXTFIELD =====
@@ -92,11 +93,12 @@ Popup {
 
         // ===== CLOSE BUTTON =====
         MyButton {
-            text: "Close"
-            width: parent.width
+            text: "Đóng"
+            width: 100
             font.pixelSize: 14
             height: 40
             bgColor: "#81D479"
+            anchors.horizontalCenter: parent.horizontalCenter
             onClicked: {
                 root.folderSelected(root.folderPath)
                 root.close()

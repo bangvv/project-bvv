@@ -15,7 +15,7 @@ public:
     explicit DataReceiver(QObject *parent = nullptr);
 
     // Getter
-    QString time() const;
+    QString time();
 
     Q_INVOKABLE void saveToCsv(const QString &operatorName,
                                const QString &serial,

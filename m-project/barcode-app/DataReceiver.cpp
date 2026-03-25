@@ -2,7 +2,12 @@
 
 DataReceiver::DataReceiver(QObject *parent) : QObject(parent) {}
 
-QString DataReceiver::time() const { return m_time; }
+QString DataReceiver::time() {
+    QDateTime now = QDateTime::currentDateTime();
+    QString timestamp = now.toString("dd-MM-yyyy HH:mm:ss");
+    m_time = timestamp;
+    return m_time;
+}
 void DataReceiver::saveToCsv(const QString &operatorName, const QString &serial, const QString &result, const QString &customPath)
 {
     QDateTime now = QDateTime::currentDateTime();

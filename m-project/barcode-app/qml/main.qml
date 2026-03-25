@@ -27,6 +27,14 @@ ApplicationWindow {
         id:settingScreenId
         anchors.centerIn: parent
     }
+    InfoScreen{
+        id:infoScreenId
+        anchors.centerIn: parent
+    }
+    OtherScreen{
+        id:otheroScreenId
+        anchors.centerIn: parent
+    }
 
     MyButton{
         x:500
@@ -62,7 +70,7 @@ ApplicationWindow {
             width: 70
             font.pixelSize: 14
             onClicked: {
-                console.log("Open Info")
+                infoScreenId.open()
             }
             background: Rectangle{
                 color: "#F5D8A2"
@@ -75,7 +83,7 @@ ApplicationWindow {
             width: 70
             font.pixelSize: 14
             onClicked: {
-                console.log("Other action")
+                otheroScreenId.open()
             }
             background: Rectangle{
                 color: "#F5D8A2"
@@ -106,40 +114,53 @@ ApplicationWindow {
         onAccepted: {
             if (settingScreenId.folderPath == ""){
                 dialogWarning.open()
+                text = ""
                 return
             }
 
-            if (text !== "") {
-                var status = isPass==true?"OK":"NG"
-                myReceiver.saveToCsv("",text,status,settingScreenId.folderPath)
+            if (text !== "" && text.length > 12) {
                 isPass = true
-                var newEntry = myReceiver.time + "  " + text + " " + status;
-                logList.unshift(newEntry);
-                if (logList.length > 5) { logList.pop(); }
-                logArea.text = logList.join("\n");
-                text = ""
+                myReceiver.saveToCsv("",text,isPass==true?"OK":"NG",settingScreenId.folderPath)
             }else{
                 isPass = false
             }
+            var status = isPass==true?"OK":"NG"
+            var newEntry = myReceiver.time + "  " + text + " " + status;
+            logList.push(newEntry);
+            if (logList.length > 20) { logList.shift(); }
+            logArea.text = logList.join("\n");
+            logArea.text += "\n"
+            text = ""
         }
     }
 
-    TextArea {
-        id: logArea
+    ScrollView {
+        id: scrollView
         x: 20
         y: 200
         width: 500
         height: 220
-        readOnly: true
-        color: "black"
-        wrapMode: TextArea.Wrap
-        text: ""
-        font.pixelSize: 18
+        clip: true
         background: Rectangle {
             radius: 4
             border.color: "white"
             border.width: 2
             color: "#DEEBDD"
+        }
+
+        TextArea {
+            id: logArea
+            readOnly: true
+            wrapMode: TextArea.Wrap
+            text: ""
+            font.pixelSize: 15
+            color: "black"
+
+            onTextChanged: {
+                Qt.callLater(function() {
+                    cursorPosition = length
+                })
+            }
         }
     }
 

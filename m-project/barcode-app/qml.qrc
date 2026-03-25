@@ -9,5 +9,7 @@
         <file>qml/common/MyDialog.qml</file>
         <file>qml/common/MyMenu.qml</file>
         <file>qml/SettingScreen.qml</file>
+        <file>qml/InfoScreen.qml</file>
+        <file>qml/OtherScreen.qml</file>
     </qresource>
 </RCC>
