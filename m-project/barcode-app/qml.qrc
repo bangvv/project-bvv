@@ -8,5 +8,6 @@
         <file>qml/common/MyComboBoxStyleColor.qml</file>
         <file>qml/common/MyDialog.qml</file>
         <file>qml/common/MyMenu.qml</file>
+        <file>qml/SettingScreen.qml</file>
     </qresource>
 </RCC>
