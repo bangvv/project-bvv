@@ -1,1 +1,1 @@
-start server.exe ./
+start server.exe ./../../

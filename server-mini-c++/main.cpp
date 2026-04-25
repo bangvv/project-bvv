@@ -1,181 +1,305 @@
+#ifdef _WIN32
+  #ifndef _WIN32_WINNT
+    #define _WIN32_WINNT 0x0A00
+  #endif
+  #ifndef WINVER
+    #define WINVER 0x0A00
+  #endif
+#endif
 #include "httplib.h"
 #include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <unordered_map>
+#include <vector>
+#include <iostream>
 
 namespace fs = std::filesystem;
 
 fs::path BASE_DIR;
 
-// MIME type cơ bản
+// ===== MIME =====
 std::string get_mime_type(const std::string &ext) {
     static std::unordered_map<std::string, std::string> mime = {
-        {".html", "text/html"},
-        {".htm", "text/html"},
-        {".txt", "text/plain"},
-        {".jpg", "image/jpeg"},
-        {".jpeg", "image/jpeg"},
-        {".png", "image/png"},
-        {".gif", "image/gif"},
-        {".css", "text/css"},
-        {".js", "application/javascript"},
-        {".json", "application/json"},
-        {".pdf", "application/pdf"},
-        {".mp4", "video/mp4"}
+        {".html","text/html"},
+        {".txt","text/plain"},
+        {".jpg","image/jpeg"},
+        {".png","image/png"},
+        {".css","text/css"},
+        {".js","application/javascript"},
+        {".mp4","video/mp4"}
     };
 
     auto it = mime.find(ext);
     return it != mime.end() ? it->second : "application/octet-stream";
 }
 
-// đọc file binary
-std::string read_file(const fs::path &path) {
-    std::ifstream file(path, std::ios::binary);
-    return std::string((std::istreambuf_iterator<char>(file)),
-                        std::istreambuf_iterator<char>());
+// ===== STREAM =====
+void stream_file(const fs::path& path, const std::string& mime, httplib::Response& res) {
+    auto size = fs::file_size(path);
+
+    res.set_content_provider(size, mime.c_str(),
+        [path](size_t offset, size_t length, httplib::DataSink &sink) {
+
+            std::ifstream file(path, std::ios::binary);
+            if (!file) return false;
+
+            file.seekg(offset);
+
+            const size_t BUF = 4 * 1024 * 1024;
+            static thread_local std::vector<char> buffer(BUF);
+
+            while (length > 0 && file) {
+                size_t to_read = std::min(BUF, length);
+                file.read(buffer.data(), to_read);
+                size_t n = file.gcount();
+                if (n == 0) break;
+
+                sink.write(buffer.data(), n);
+                length -= n;
+            }
+
+            sink.done();
+            return true;
+        }
+    );
 }
 
-// HTML list folder
-std::string render_directory(const fs::path &dir, const std::string &url_path) {
-    std::stringstream html;
+// ===== CHECK PATH AN TOÀN =====
+bool is_safe_path(const fs::path& base, const fs::path& target) {
+    auto b = base.lexically_normal();
+    auto t = target.lexically_normal();
 
-    html << "<html><head><meta charset='utf-8'>"
-         << "<style>"
-         << "body{font-family:sans-serif;}"
-         << "a{text-decoration:none;margin-right:8px;}"
-         << ".icon{width:16px;vertical-align:middle;}"
-         << "</style></head><body>";
+    return std::mismatch(b.begin(), b.end(), t.begin()).first == b.end();
+}
 
-    html << "<h2>Index of " << url_path << "</h2><ul>";
+// ===== PARENT PATH =====
+std::string parent_path(std::string p) {
+    if (p.size() > 1 && p.back() == '/') p.pop_back();
 
-    if (url_path != "/") {
-        html << "<li>"
-			 << "<a href=\"../\">"
-			 << "<img src=\"/back.png\" class=\"icon\"/> .. Back"
-			 << "</a></li>";
+    auto pos = p.find_last_of('/');
+    if (pos == std::string::npos || pos == 0) return "/";
+
+    return p.substr(0, pos + 1);
+}
+
+// ===== HTML =====
+std::string render_dir(const fs::path& dir, std::string url) {
+    if (url.back() != '/') url += "/";
+
+    std::stringstream ss;
+
+    ss << "<html><head><meta charset='utf-8'>"
+
+       << "<style>"
+
+// ===== LAYOUT =====
+<< "body{font-family:sans-serif;background:#f3f4f6;padding:12px;}"
+<< "h2{margin-bottom:10px;}"
+
+<< "ul{list-style:none;padding:0;}"
+<< "li{margin:8px 0;display:flex;justify-content:space-between;align-items:center;"
+<< "padding:6px 10px;border-radius:8px;}"
+<< "li:hover{background:#e5e7eb;}"
+
+// ===== LINK =====
+<< "a{text-decoration:none;}"
+
+// file/folder
+<< ".folder{color:#2563eb;font-weight:500;}"
+<< ".file{color:#111827;}"
+
+// ===== BUTTON REAL =====
+<< ".btn{"
+<< "display:inline-block;"
+<< "padding:6px 14px;"
+<< "border-radius:8px;"
+<< "font-size:13px;"
+<< "font-weight:600;"
+<< "cursor:pointer;"
+<< "user-select:none;"
+<< "transition:all 0.1s ease;"
+<< "box-shadow:0 4px 0 rgba(0,0,0,0.25);" // nổi
+<< "}"
+
+// nhấn xuống
+<< ".btn:active{"
+<< "transform:translateY(2px);"
+<< "box-shadow:0 2px 0 rgba(0,0,0,0.25);"
+<< "}"
+
+// DOWNLOAD
+<< ".download{"
+<< "background:linear-gradient(#34d399,#10b981);"
+<< "color:white;"
+<< "}"
+<< ".download:hover{"
+<< "background:linear-gradient(#6ee7b7,#10b981);"
+<< "}"
+
+// BACK
+<< ".back{"
+<< "background:linear-gradient(#e5e7eb,#d1d5db);"
+<< "color:#111827;"
+<< "}"
+<< ".back:hover{"
+<< "background:linear-gradient(#f3f4f6,#d1d5db);"
+<< "}"
+
+// ===== RIGHT SIDE =====
+<< ".right{display:flex;gap:8px;}"
+
+<< "</style></head><body>";
+
+    ss << "<h2>Index of " << url << "</h2><ul>";
+
+    // ===== BACK =====
+    if (url != "/") {
+        ss << "<li>"
+           << "<a class=\"btn back\" href=\"" << parent_path(url) << "\">⬅ Back</a>"
+           << "<span></span>"
+           << "</li>";
     }
 
-    for (auto &entry : fs::directory_iterator(dir)) {
-        std::string name = entry.path().filename().string();
+    for (auto &e : fs::directory_iterator(dir)) {
+        std::string name = e.path().filename().string();
 
-        std::string link = url_path;
-        if (link.back() != '/') link += "/";
-        link += name;
+        ss << "<li>";
 
-        html << "<li>";
-
-        if (fs::is_directory(entry)) {
-            html << "<a href=\"" << link << "/\">" << name << "/</a>";
+        // LEFT: file/folder
+        if (fs::is_directory(e)) {
+            ss << "<a class=\"folder\" href=\"" << url << name << "/\">📁 "
+               << name << "/</a>";
+            ss << "<div class=\"right\"></div>";
         } else {
-            // link xem file
-            html << "<a href=\"" << link << "\">" << name << "</a>";
+            ss << "<a class=\"file\" href=\"" << url << name << "\">📄 "
+               << name << "</a>";
 
-            // link download (icon)
-            std::string download_link = "/download/";
-            if (url_path != "/") {
-                download_link += url_path.substr(1) + "/";
-            }
-            download_link += name;
-
-            html << "<a href=\"" << download_link << "\">"
-                 << "<img src=\"/download.png\" class=\"icon\"/>"
-                 << "</a>";
+            // RIGHT: button
+            ss << "<div class=\"right\">"
+               << "<a class=\"btn download\" href=\"/download" << url << name << "\">⬇ Download</a>"
+               << "</div>";
         }
 
-        html << "</li>";
+        ss << "</li>";
     }
 
-    html << "</ul></body></html>";
-    return html.str();
+    ss << "</ul></body></html>";
+    return ss.str();
 }
 
-int main(int argc, char* argv[]) {
-	if (argc > 1) {
-        BASE_DIR = fs::canonical(argv[1]);
-    } else {
-        BASE_DIR = fs::canonical("./shared");
+
+std::string render_dir1(const fs::path& dir, std::string url) {
+    if (url.back() != '/') url += "/";
+
+    std::stringstream ss;
+
+    ss << "<html><head><meta charset='utf-8'>"
+       << "<style>body{font-family:sans-serif;} a{margin-right:10px;}</style>"
+       << "</head><body>";
+
+    ss << "<h2>Index of " << url << "</h2><ul>";
+
+    if (url != "/") {
+        ss << "<li><a href=\"" << parent_path(url) << "\">[.. Back ]</a></li>";
     }
+
+    for (auto &e : fs::directory_iterator(dir)) {
+        std::string name = e.path().filename().string();
+
+        ss << "<li>";
+
+        if (fs::is_directory(e)) {
+            ss << "<a href=\"" << url << name << "/\">" << name << "/</a>";
+        } else {
+            ss << "<a href=\"" << url << name << "\">" << name << "</a>";
+            ss << "<a href=\"/download" << url << name << "\">[ DL ]</a>";
+        }
+
+        ss << "</li>";
+    }
+
+    ss << "</ul></body></html>";
+    return ss.str();
+}
+
+// ================= MAIN =================
+int main(int argc, char* argv[]) {
+
+    fs::path base = (argc > 1) ? argv[1] : "./shared";
+
+    if (!fs::exists(base)) {
+        std::cout << "ERROR: folder not exist\n";
+        return 1;
+    }
+
+    BASE_DIR = fs::canonical(base);
+
     httplib::Server svr;
 
-	// route download file
-	svr.Get(R"(/download/(.*))", [](const httplib::Request& req, httplib::Response& res) {
-		fs::path requested = BASE_DIR / req.matches[1].str();
-		fs::path canonical = fs::weakly_canonical(requested);
+    // ===== DOWNLOAD =====
+    svr.Get(R"(/download/(.*))", [](const httplib::Request& req, httplib::Response& res) {
 
-		if (canonical.string().find(BASE_DIR.string()) != 0 || !fs::exists(canonical)) {
-			res.status = 404;
-			return;
-		}
+        fs::path rel = req.matches[1].str();
+        fs::path full = BASE_DIR / rel;
 
-		std::ifstream file(canonical, std::ios::binary);
-		std::stringstream buffer;
-		buffer << file.rdbuf();
-
-		std::string filename = canonical.filename().string();
-
-		res.set_header("Content-Disposition", "attachment; filename=\"" + filename + "\"");
-		res.set_content(buffer.str(), "application/octet-stream");
-	});
-
-	// serve icon back.png
-	svr.Get("/back.png", [](const httplib::Request&, httplib::Response& res) {
-		std::ifstream file("res/back.png", std::ios::binary);
-		std::stringstream buffer;
-		buffer << file.rdbuf();
-		res.set_content(buffer.str(), "image/png");
-	});
-
-	// serve icon download.png
-	svr.Get("/download.png", [](const httplib::Request&, httplib::Response& res) {
-		std::ifstream file("res/download.png", std::ios::binary);
-		std::stringstream buffer;
-		buffer << file.rdbuf();
-		res.set_content(buffer.str(), "image/png");
-	});
-
-    svr.Get(R"(/(.*))", [](const httplib::Request &req, httplib::Response &res) {
-        std::string url_path = "/" + req.matches[1].str();
-
-        // normalize path
-        fs::path requested = BASE_DIR / fs::path(req.matches[1].str());
-        fs::path canonical_path = fs::weakly_canonical(requested);
-
-        // 🔒 chặn path traversal
-        if (canonical_path.string().find(BASE_DIR.string()) != 0) {
-            res.status = 403;
-            res.set_content("Forbidden", "text/plain");
+        if (!fs::exists(full)) {
+            res.status = 404;
             return;
         }
 
-        if (!fs::exists(canonical_path)) {
+        full = fs::canonical(full);
+
+        if (!is_safe_path(BASE_DIR, full)) {
+            res.status = 403;
+            return;
+        }
+
+        res.set_header("Content-Disposition",
+            "attachment; filename=\"" + full.filename().string() + "\"");
+
+        stream_file(full, "application/octet-stream", res);
+    });
+
+    // ===== MAIN =====
+    svr.Get(R"(/(.*))", [](const httplib::Request &req, httplib::Response &res) {
+
+        std::string sub = req.matches[1].str();
+        std::string url = "/" + sub;
+
+        fs::path full = BASE_DIR / sub;
+
+        if (!fs::exists(full)) {
             res.status = 404;
             res.set_content("Not found", "text/plain");
             return;
         }
 
-        // nếu là folder
-        if (fs::is_directory(canonical_path)) {
-            std::string html = render_directory(canonical_path, url_path);
-            res.set_content(html, "text/html; charset=utf-8");
+        full = fs::canonical(full);
+
+        if (!is_safe_path(BASE_DIR, full)) {
+            res.status = 403;
+            res.set_content("Forbidden", "text/plain");
             return;
         }
 
-        // nếu là file
-        std::ifstream file(canonical_path, std::ios::binary);
-        if (!file) {
-            res.status = 500;
-            res.set_content("Cannot open file", "text/plain");
+        // ===== DIR =====
+        if (fs::is_directory(full)) {
+
+            if (url.back() != '/') {
+                res.status = 301;
+                res.set_header("Location", url + "/");
+                return;
+            }
+
+            res.set_content(render_dir(full, url), "text/html; charset=utf-8");
             return;
         }
 
-        std::stringstream buffer;
-        buffer << file.rdbuf();
-
-        std::string ext = canonical_path.extension().string();
-        res.set_content(buffer.str(), get_mime_type(ext));
+        // ===== FILE =====
+        stream_file(full, get_mime_type(full.extension().string()), res);
     });
 
-    printf("Server running at http://0.0.0.0:8080\n");
+    std::cout << "RUN: http://localhost:8080\n";
     svr.listen("0.0.0.0", 8080);
 }

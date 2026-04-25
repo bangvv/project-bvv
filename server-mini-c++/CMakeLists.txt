@@ -1,12 +1,27 @@
-cmake_minimum_required(VERSION 3.10)
+cmake_minimum_required(VERSION 3.14)
 
-project(server)
+set(CMAKE_CXX_COMPILER "D:/0.BANG/winlib/lib/mingw64/bin/g++.exe")
+set(CMAKE_C_COMPILER   "D:/0.BANG/winlib/lib/mingw64/bin/gcc.exe")
 
-add_executable(server main.cpp icon.rc)
+project(server LANGUAGES CXX)
 
-include_directories(include)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Windows cần socket lib
+set(SOURCES main.cpp)
+
 if (WIN32)
-    target_link_libraries(server ws2_32)
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/icon.rc")
+        list(APPEND SOURCES icon.rc)
+    endif()
+endif()
+
+add_executable(server ${SOURCES})
+target_include_directories(server PRIVATE include .)
+
+if (WIN32)
+    target_link_libraries(server ws2_32 stdc++fs)
+    target_link_options(server PRIVATE "-static")
+else()
+    target_link_libraries(server stdc++fs pthread)
 endif()
