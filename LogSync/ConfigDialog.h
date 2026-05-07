@@ -1,24 +1,25 @@
 #pragma once
-#include <QDialog>
+#include <QObject>
+#include "PairModel.h"
+#include <QSettings>
 
-class QLineEdit;
-
-class ConfigDialog : public QDialog {
+class ConfigDialog : public QObject {
     Q_OBJECT
-public:
-    ConfigDialog(QWidget* parent = nullptr);
+    Q_PROPERTY(PairModel* model READ model CONSTANT)
 
-private slots:
-    void browseSource();
-    void browseDest();
-    void saveConfig();
+public:
+    explicit ConfigDialog(QObject* parent = nullptr);
+
+    PairModel* model();
+
+    Q_INVOKABLE void save();
+    Q_INVOKABLE bool isMonthMode() const;
+    Q_INVOKABLE void setMonthMode(bool enable);
 
 signals:
-    void configSaved();
+    void saved();
 
 private:
-    QLineEdit* sourceEdit;
-    QLineEdit* destEdit;
-
-    void loadConfig();
+    PairModel m_model;
+    void load();
 };

@@ -1,8 +1,9 @@
-QT += core widgets
+QT += core widgets qml quick quickwidgets
 CONFIG += c++17 console
 CONFIG -= app_bundle
 
 SOURCES += \
+    PairModel.cpp \
     main.cpp \
     SyncEngine.cpp \
     FileWatcher.cpp \
@@ -12,6 +13,7 @@ SOURCES += \
     ConfigDialog.cpp
 
 HEADERS += \
+    PairModel.h \
     SyncEngine.h \
     FileWatcher.h \
     DebounceManager.h \
