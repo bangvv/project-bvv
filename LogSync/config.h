@@ -1,7 +1,10 @@
 #pragma once
+#include <QString>
+#include <SyncLogger.h>
 
-#define SOURCE_FOLDER "D:/logs"
-#define DEST_FOLDER   "\\\\SERVER\\share\\logs"
+#define TIME_WORKLOAD 10
 
-#define DEBOUNCE_SECONDS 20
-#define WORKER_THREADS 2
+inline void LOG(const QString& msg)
+{
+    SyncLogger::instance().log(msg, Q_FUNC_INFO);
+}

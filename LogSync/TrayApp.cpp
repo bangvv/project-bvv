@@ -5,7 +5,7 @@
 #include <QQmlContext>
 #include <QTimer>
 #include <QDebug>
-
+#include <config.h>
 
 TrayApp::TrayApp() {
     engine = std::make_unique<SyncEngine>();
@@ -40,12 +40,13 @@ TrayApp::TrayApp() {
 }
 
 void TrayApp::reloadEngine() {
-    tray.showMessage("LogSync", "Reloading configuration...");
+    tray.showMessage("LogSync", "Reloading..");
 
     QTimer::singleShot(0, this, [this]() {
+        LOG("Reloaded file Json");
         engine.reset();
         engine = std::make_unique<SyncEngine>();
 
-        tray.showMessage("LogSync", "Configuration reloaded!");
+        tray.showMessage("LogSync", "Reloaded!");
     });
 }

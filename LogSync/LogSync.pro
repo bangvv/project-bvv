@@ -7,7 +7,6 @@ SOURCES += \
     main.cpp \
     SyncEngine.cpp \
     FileWatcher.cpp \
-    DebounceManager.cpp \
     SyncWorker.cpp \
     TrayApp.cpp \
     ConfigDialog.cpp
@@ -16,7 +15,8 @@ HEADERS += \
     PairModel.h \
     SyncEngine.h \
     FileWatcher.h \
-    DebounceManager.h \
+    SyncLogger.h \
+    SyncMode.h \
     SyncWorker.h \
     TrayApp.h \
     config.h \

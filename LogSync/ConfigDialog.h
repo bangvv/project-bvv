@@ -15,6 +15,7 @@ public:
     Q_INVOKABLE void save();
     Q_INVOKABLE bool isMonthMode() const;
     Q_INVOKABLE void setMonthMode(bool enable);
+    QString normalizePath(const QString& input);
 
 signals:
     void saved();

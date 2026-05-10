@@ -5,6 +5,8 @@
 #include <QFile>
 #include <QDebug>
 #include <QJsonDocument>
+#include <QDir>
+#include <QUrl>
 
 ConfigDialog::ConfigDialog(QObject* parent)
     : QObject(parent) {
@@ -74,4 +76,20 @@ void ConfigDialog::setMonthMode(bool enable)
 {
     QSettings s("LogSync", "LogSync");
     s.setValue("mode/month", enable);
+}
+
+QString ConfigDialog::normalizePath(const QString& input)
+{
+    QString p = input.trimmed();
+
+    if (p.startsWith("file://", Qt::CaseInsensitive)) {
+        QUrl url(p);
+        p = url.toLocalFile();
+    }
+    p = QDir::fromNativeSeparators(p);
+    p = QDir::cleanPath(p);
+    if (p.endsWith('/'))
+        p.chop(1);
+
+    return p;
 }

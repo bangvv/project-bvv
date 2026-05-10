@@ -1,123 +1,188 @@
 #include "SyncWorker.h"
-#include <QFile>
+#include <QDirIterator>
 #include <QFileInfo>
-#include <QThread>
+#include <QFile>
 #include <QDir>
-#include <QDateTime>
 #include <QDebug>
-#include <QSettings>
+#include <QDateTime>
+#include "config.h"
 
-bool safeCopy(const QString& src, const QString& dest)
+static const qint64 CHUNK_SIZE = 1024 * 1024; // 1MB
+static const int ACTIVE_DAYS = 15;
+
+SyncWorker::SyncWorker()
 {
-    if (!QFile::exists(src))
-        return false;
+    m_thread = std::thread(&SyncWorker::run, this);
+}
 
-    QDir().mkpath(QFileInfo(dest).path());
+SyncWorker::~SyncWorker()
+{
+    stop();
+}
 
-    QString tmp = dest + ".tmp";
+void SyncWorker::stop()
+{
+    m_running = false;
+    m_cv.notify_all();
+    if (m_thread.joinable())
+        m_thread.join();
+}
 
-    QFile::remove(tmp);
+void SyncWorker::setPairs(const std::vector<SyncPair>& pairs)
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
 
-    QFile in(src);
-    if (!in.open(QIODevice::ReadOnly))
-        return false;
+    m_reloadRequested = true;
+    m_runtimes.clear();
 
-    QFile out(tmp);
-    if (!out.open(QIODevice::WriteOnly))
-        return false;
-
-    char buffer[64 * 1024];
-    qint64 len;
-
-    while ((len = in.read(buffer, sizeof(buffer))) > 0) {
-        out.write(buffer, len);
+    for (const auto& p : pairs) {
+        PairRuntime rt;
+        rt.pair = p;
+        m_runtimes.push_back(rt);
     }
 
-    out.flush();
-    out.close();
-    in.close();
-
-    QFile::remove(dest);
-    return QFile::rename(tmp, dest);
+    m_cv.notify_one();
 }
 
-SyncWorker::SyncWorker(const QString& source, const QString& dest)
-    : destFolder(dest), sourceFolder(source)
+void SyncWorker::buildIndex(PairRuntime& runtime)
 {
-    QSettings s("LogSync", "LogSync");
+    LOG(QString("Indexing: %1").arg(runtime.pair.source));
 
-    bool monthMode = s.value("mode/month", false).toBool();
+    QDirIterator it(runtime.pair.source,
+                    QDir::Files,
+                    QDirIterator::Subdirectories);
 
-    mode = monthMode ? SyncMode::LastModifiedMonth
-                     : SyncMode::Fixed;
+    QDir srcRoot(runtime.pair.source);
+
+    while (it.hasNext()) {
+        QString abs = it.next();
+        QString rel = srcRoot.relativeFilePath(abs);
+        runtime.files.push_back(rel);
+    }
+
+    runtime.indexed = true;
+    runtime.cursor = 0;
+
+    LOG(QString("Indexed files: %1").arg(runtime.files.size()));
 }
 
-void SyncWorker::enqueue(const QString& file) {
-    QMutexLocker lock(&mutex);
-    queue.enqueue(file);
-    cond.wakeOne();
-    qDebug() <<" add enqueue to wakeOne thread";
-}
+void SyncWorker::run()
+{
+    std::unique_lock<std::mutex> lock(m_mutex);
 
-void SyncWorker::process() {
-    while (true) {
-        mutex.lock();
+    while (m_running) {
 
-        while (queue.isEmpty()) {
-            cond.wait(&mutex);
+        m_cv.wait_for(lock, std::chrono::seconds(TIME_WORKLOAD));
+
+        if (!m_running)
+            break;
+
+        auto runtimes = m_runtimes;
+        m_reloadRequested = false;
+
+        lock.unlock();
+
+        for (auto& rt : runtimes) {
+            if (!m_running) break;
+            if (m_reloadRequested)
+                break;
+            processPair(rt);
         }
 
-        QString file = queue.dequeue();
-        mutex.unlock();
-
-        copyFileSafe(file);
+        lock.lock();
     }
 }
 
-void SyncWorker::copyFileSafe(const QString& src)
+QString SyncWorker::resolveDest(const SyncPair& pair,
+                                const QString& relativePath,
+                                const QFileInfo& sInfo)
 {
-    QString dest = resolveDestPath(src);
+    QDir destRoot(pair.dest);
 
-    QFileInfo srcInfo(src);
-    QFileInfo destInfo(dest);
+    if (pair.mode == SyncMode::Fixed) {
+        return QDir::cleanPath(destRoot.filePath(relativePath));
+    }
 
-    QDir().mkpath(QFileInfo(dest).path());
+    QString month = sInfo.lastModified().toString("yyyy-MM");
 
-    if (destInfo.exists()) {
-        qDebug() <<" destInfo:"+destInfo.baseName();
-        if (destInfo.size() == srcInfo.size() &&
-            destInfo.lastModified() >= srcInfo.lastModified()) {
-            if (destInfo.baseName() == "abx"){
-                qDebug() <<" size:"+QString::number(destInfo.size());
-                qDebug() <<" size:"+QString::number(srcInfo.size());
-            }
+    return QDir::cleanPath(
+        destRoot.filePath(month + "/" + relativePath));
+}
+
+void SyncWorker::processPair(PairRuntime& runtime)
+{
+    if (!runtime.indexed)
+        buildIndex(runtime);
+
+    const SyncPair& pair = runtime.pair;
+
+    int processed = 0;
+
+    while (processed < 20 && runtime.cursor < runtime.files.size()) {
+
+        if (m_reloadRequested)
             return;
-        }
+
+        QString relative = runtime.files[runtime.cursor++];
+        QString srcFile = QDir(pair.source).filePath(relative);
+
+        QFileInfo sInfo(srcFile);
+        if (!sInfo.exists())
+            continue;
+
+        // chỉ sync file mới sửa gần đây
+        if (sInfo.lastModified().daysTo(QDateTime::currentDateTime()) > ACTIVE_DAYS)
+            continue;
+
+        QString destFile = resolveDest(pair, relative, sInfo);
+
+        QFileInfo dInfo(destFile);
+
+        qint64 already = dInfo.exists() ? dInfo.size() : 0;
+
+        if (already >= sInfo.size())
+            continue;
+
+        QDir().mkpath(QFileInfo(destFile).path());
+
+        copyChunk(srcFile, destFile, already,
+                  qMin(CHUNK_SIZE, sInfo.size() - already));
+
+        LOG(QString("Copy 1MB: %1").arg(destFile));
+
+        processed++;
     }
-    qDebug() <<" copy:"+src + " to:"+dest;
-    safeCopy(src, dest);
+
+    // quay vòng lại từ đầu
+    if (runtime.cursor >= runtime.files.size())
+        runtime.cursor = 0;
 }
 
-
-
-QString SyncWorker::resolveDestPath(const QString& src)
+bool SyncWorker::copyChunk(const QString& srcFile,
+               const QString& destFile,
+               qint64 offset,
+               qint64 size)
 {
-    QFileInfo srcInfo(src);
+    QFile src(srcFile);
+    if (!src.open(QIODevice::ReadOnly))
+        return false;
 
-    QDir sourceRoot(sourceFolder);
-    QString relativePath = sourceRoot.relativeFilePath(src);
-
-    QString base = destFolder;
-
-    if (mode == SyncMode::LastModifiedMonth) {
-        QString month = srcInfo.lastModified().toString("yyyy-MM");
-        base = QDir(base).filePath(month);
+    if (!src.seek(offset)) {
+        src.close();
+        return false;
     }
 
-    return QDir(base).filePath(relativePath);
-}
+    QByteArray data = src.read(size);
+    src.close();   // đóng NGAY lập tức
 
-void SyncWorker::setMode(SyncMode m)
-{
-    mode = m;
+    QDir().mkpath(QFileInfo(destFile).path());
+
+    QFile dest(destFile);
+    if (!dest.open(QIODevice::Append))
+        return false;
+
+    dest.write(data);
+    dest.close();  // đóng NGAY
+
+    return true;
 }

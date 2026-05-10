@@ -1,31 +1,67 @@
 #pragma once
-#include <QObject>
-#include <QQueue>
-#include <QMutex>
-#include <QWaitCondition>
 
-enum class SyncMode {
-    Fixed,
-    LastModifiedMonth
+#include <thread>
+#include <mutex>
+#include <condition_variable>
+#include <vector>
+#include <atomic>
+
+#include <QString>
+#include <QVector>
+#include <QDateTime>
+#include <QFileInfo>
+
+#include "SyncMode.h"
+
+struct SyncPair {
+    QString source;   // config only
+    QString dest;     // config only
+    SyncMode mode;    // config only
 };
 
-class SyncWorker : public QObject {
-    Q_OBJECT
+// Runtime state cho mỗi pair (QUAN TRỌNG)
+struct PairRuntime {
+    SyncPair pair;
+
+    QVector<QString> files;  // toàn bộ relative path đã index
+    int cursor = 0;          // đang chạy tới file nào
+    bool indexed = false;    // đã index xong chưa
+};
+
+class SyncWorker
+{
 public:
-    SyncWorker(const QString& source, const QString& dest);
-    void enqueue(const QString& file);
-    QString resolveDestPath(const QString& src);
-    void setMode(SyncMode m);
-public slots:
-    void process();
+    SyncWorker();
+    ~SyncWorker();
+
+    void setPairs(const std::vector<SyncPair>& pairs);
+    void stop();
 
 private:
-    SyncMode mode = SyncMode::Fixed;
-    QQueue<QString> queue;
-    QMutex mutex;
-    QWaitCondition cond;
-    QString destFolder;
-    QString sourceFolder;
+    void run();
 
-    void copyFileSafe(const QString& src);
+    void processPair(PairRuntime& runtime);
+
+    // index toàn bộ file 1 lần duy nhất
+    void buildIndex(PairRuntime& runtime);
+
+    QString resolveDest(const SyncPair& pair,
+                        const QString& relativePath,
+                        const QFileInfo& sInfo);
+
+    bool copyChunk(const QString& srcFile,
+                   const QString& destFile,
+                   qint64 offset,
+                   qint64 size);
+
+private:
+    std::thread m_thread;
+    std::mutex m_mutex;
+    std::condition_variable m_cv;
+
+    // KHÔNG lưu SyncPair trực tiếp nữa
+    std::vector<PairRuntime> m_runtimes;
+
+    std::atomic<bool> m_running{true};
+    std::atomic<bool> m_reloadRequested{false};
 };
